@@ -16,12 +16,9 @@ module PagoEfectivo
     }
 
     def initialize(options = {})
-      if options[:env] == 'production'
-        @api_server = 'https://pagoefectivo.pe'
-      else
-        @api_server = 'https://pre.2b.pagoefectivo.pe'
-      end
-
+      raise 'Ingrese api_server y/o code_service. Obligatorio' unless options[:api_server] || options[:code_service]
+      @api_server = options[:api_server]
+      @code_service = options[:code_service]
       crypto_path = '/PagoEfectivoWSCrypto/WSCrypto.asmx?WSDL'
       cip_path = '/PagoEfectivoWSGeneralv2/service.asmx?WSDL'
       crypto_service = @api_server + crypto_path
@@ -85,7 +82,7 @@ module PagoEfectivo
       end
     end
 
-    def generate_xml(cod_serv, currency, total, pay_methods, cod_trans, email,
+    def generate_xml(currency, total, pay_methods, cod_trans, email,
                      user, additional_data, exp_date, place, pay_concept,
                      origin_code, origin_type)
       # cod_serv => código de servicio asignado
@@ -94,7 +91,7 @@ module PagoEfectivo
                  id_moneda: currency[:id],
                  total: total, # 18 enteros, 2 decimales. Separados por `,`
                  metodos_pago: pay_methods,
-                 cod_servicio: cod_serv,
+                 cod_servicio: @code_service,
                  codtransaccion: cod_trans, # referencia al pago
                  email_comercio: email,
                  fecha_a_expirar: exp_date, # (DateTime.now + 4).to_s(:db)
@@ -144,10 +141,10 @@ module PagoEfectivo
       xml_child = create_markup(gyoku_xml)
     end
 
-    def generate_cip(cod_serv, signer, xml)
+    def generate_cip(signer, xml)
       response = @cip_client.call(:generar_cip_mod1, message: {
                               request: {
-                                'CodServ' => cod_serv,
+                                'CodServ' => @code_service,
                                 'Firma' => signer,
                                 'Xml' => xml
                             }})
@@ -160,10 +157,10 @@ module PagoEfectivo
     # encrypted_cips: cips passed by encrypted method
     # info_request: no specified in pago efectivo documentation, send blank
     #               for now
-    def consult_cip cod_serv, signed_cips, encrypted_cips, info_request=''
+    def consult_cip signed_cips, encrypted_cips, info_request=''
       response = @cip_client.call(:consultar_cip_mod1, message: {
                    'request' => {
-                     'CodServ' => cod_serv,
+                     'CodServ' => @code_service,
                      'Firma' => signed_cips,
                      'CIPS' => encrypted_cips,
                      info_request: info_request
@@ -186,10 +183,10 @@ module PagoEfectivo
     # encrypted_cip: number of cip to delete passed by encrypted method
     # info_request: no specified in pago efectivo documentation, send blank
     #               for now
-    def delete_cip cod_serv, signed_cip, encrypted_cip, info_request=''
+    def delete_cip signed_cip, encrypted_cip, info_request=''
       response = @cip_client.call(:eliminar_cip_mod1, message: {
                    'request' => {
-                     'CodServ' => cod_serv,
+                     'CodServ' => @code_service,
                      'Firma' => signed_cip,
                      'CIP' => encrypted_cip,
                      'InfoRequest' => info_request
@@ -204,10 +201,10 @@ module PagoEfectivo
     # exp_date: new expiration date, should be DateTime class
     # info_request: no specified in pago efectivo documentation, send blank
     #               for now
-    def update_cip cod_serv,signed_cip,encrypted_cip,exp_date,info_request=''
+    def update_cip signed_cip,encrypted_cip,exp_date,info_request=''
       response = @cip_client.call(:actualizar_cip_mod1, message: {
                    'request' => {
-                     'CodServ' => cod_serv,
+                     'CodServ' => @code_service,
                      'Firma' => signed_cip,
                      'CIP' => encrypted_cip,
                      'FechaExpira' => exp_date,
