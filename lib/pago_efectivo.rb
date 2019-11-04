@@ -1,6 +1,7 @@
 require 'savon'
 require 'gyoku'
 require 'nokogiri'
+require 'rest-client'
 
 module PagoEfectivo
   CURRENCIES = {soles: {id: 1, symbol: 'S/.'}, dolares: {id: 2, symbol: '$'}}
@@ -17,8 +18,11 @@ module PagoEfectivo
 
     def initialize(options = {})
       raise 'Ingrese api_server y/o code_service. Obligatorio' unless options[:api_server] || options[:code_service]
+      raise 'Ingrese access_key y/o secret_key. Obligatorio' unless options[:access_key] || options[:secret_key]
       @api_server = options[:api_server]
       @code_service = options[:code_service]
+      @access_key = options[:access_key]
+      @secret_key = options[:secret_key]
       crypto_path = '/PagoEfectivoWSCrypto/WSCrypto.asmx?WSDL'
       cip_path = '/PagoEfectivoWSGeneralv2/service.asmx?WSDL'
       crypto_service = @api_server + crypto_path
@@ -31,14 +35,30 @@ module PagoEfectivo
       @cip_client = Savon.client({ wsdl: cip_service }.merge(savon_opts))
     end
 
-    def set_key type, path
-      raise 'path to your key is not valid' unless File.exists?(path)
-      if type == 'private'
-        @private_key = File.open(path, 'rb') {|f| Base64.encode64(f.read)}
-      elsif type == 'public'
-        @public_key = File.open(path, 'rb') {|f| Base64.encode64(f.read)}
-      end
+    def generate_authorization date:
+      parameter = [@code_service.to_s, @access_key, @secret_key, date.to_s].join('.')
+      puts parameter
+      param_hash = Digest::SHA256.hexdigest parameter
+      params = {
+                 "accessKey": @access_key,
+                 "idService": @code_service,
+                 "dateRequest": date.to_s,
+                 "hashString": param_hash
+               }
+
+      response = RestClient.post "#{@api_server}/v1/authorizations", params
+      res_json = JSON.parse(response.body)
+      puts res_json
     end
+
+    # def set_key type, path
+    #   raise 'path to your key is not valid' unless File.exists?(path)
+    #   if type == 'private'
+    #     @private_key = File.open(path, 'rb') {|f| Base64.encode64(f.read)}
+    #   elsif type == 'public'
+    #     @public_key = File.open(path, 'rb') {|f| Base64.encode64(f.read)}
+    #   end
+    # end
 
    def create_markup(body)
      xml_markup = Nokogiri.XML(body).to_xml
